@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "smtm"
+version = "0.1.0"
+description = "ShowMeTheMoney crypto auto trading system MVP"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "SMTM" }]
+dependencies = []
+
+[project.scripts]
+smtm = "smtm.cli:main"
+smtm-ui = "smtm.ui:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+smtm = ["web/*"]

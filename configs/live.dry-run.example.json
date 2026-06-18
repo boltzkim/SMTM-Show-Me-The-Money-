@@ -1,0 +1,34 @@
+{
+  "title": "upbit_live_dry_run",
+  "mode": "live",
+  "dry_run": true,
+  "budget": 500000,
+  "exchange": "upbit",
+  "currency": "KRW-BTC",
+  "interval_seconds": 60,
+  "data": {
+    "provider": "upbit",
+    "base_url": "https://api.upbit.com",
+    "unit": 1,
+    "count": 1
+  },
+  "strategy": {
+    "name": "SMA",
+    "params": {
+      "short_window": 20,
+      "long_window": 120,
+      "order_ratio": "0.1"
+    }
+  },
+  "risk": {
+    "min_order_krw": 5000,
+    "max_order_krw": 10000,
+    "max_open_orders": 1,
+    "max_position_ratio": "0.2",
+    "daily_loss_limit_ratio": "0.01",
+    "stale_data_seconds": 180
+  },
+  "repository": {
+    "sqlite_path": "reports/live_dry_run.sqlite3"
+  }
+}
