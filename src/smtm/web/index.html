@@ -89,6 +89,79 @@
         </article>
       </section>
 
+      <section class="account-grid">
+        <article class="panel account-panel">
+          <div class="panel-head">
+            <h2 title="Upbit API Key의 자산조회 권한으로 조회한 계좌와 보유 코인입니다.">내 계좌</h2>
+            <span id="accountState" class="muted">조회 대기</span>
+          </div>
+          <div class="account-summary">
+            <div><span title="현재 계좌 조회와 주문 실행 모드입니다.">모드</span><strong id="tradingMode">-</strong></div>
+            <div><span title="KRW와 보유 코인의 평가 금액 합계입니다.">총 평가</span><strong id="accountTotalValue">-</strong></div>
+            <div><span title="주문에 사용할 수 있는 원화 잔고입니다.">주문 가능 KRW</span><strong id="accountKrwValue">-</strong></div>
+            <div><span title="환경변수 SMTM_MAX_ORDER_KRW로 제한한 1회 최대 주문 금액입니다.">주문 한도</span><strong id="maxOrderValue">-</strong></div>
+          </div>
+          <div class="table-wrap account-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>자산</th>
+                  <th>보유</th>
+                  <th>잠금</th>
+                  <th>평균가</th>
+                  <th>평가</th>
+                </tr>
+              </thead>
+              <tbody id="holdingsBody"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="panel order-panel">
+          <div class="panel-head">
+            <h2 title="실제 주문 전 주문 형식과 가능 여부를 확인하고, 설정에 따라 실제 또는 가상 주문을 실행합니다.">주문 테스트</h2>
+            <span id="orderMode" class="muted">가상 주문</span>
+          </div>
+          <div class="order-form">
+            <label class="field">
+              <span title="주문을 보낼 마켓입니다. 환경변수 SMTM_ALLOWED_MARKETS 안에서만 허용됩니다.">마켓</span>
+              <select id="orderMarket">
+                <option value="KRW-BTC">비트코인</option>
+                <option value="KRW-XRP">엑스알피(리플)</option>
+              </select>
+            </label>
+            <label class="field">
+              <span title="매수 또는 매도 방향입니다.">방향</span>
+              <select id="orderSide">
+                <option value="buy">매수</option>
+                <option value="sell">매도</option>
+              </select>
+            </label>
+            <label class="field">
+              <span title="지정가, 시장가 매수, 시장가 매도 중 하나를 선택합니다.">방식</span>
+              <select id="orderKind">
+                <option value="limit">지정가</option>
+                <option value="market_buy">시장가 매수</option>
+                <option value="market_sell">시장가 매도</option>
+              </select>
+            </label>
+            <label class="field">
+              <span id="orderPriceLabel" title="지정가 주문에서는 단가, 시장가 매수에서는 총 주문 금액입니다.">가격/KRW</span>
+              <input id="orderPrice" title="지정가 단가 또는 시장가 매수 금액입니다." type="number" min="0" step="1" placeholder="예: 5000" />
+            </label>
+            <label class="field">
+              <span id="orderVolumeLabel" title="지정가 주문과 시장가 매도에서 사용할 코인 수량입니다.">수량</span>
+              <input id="orderVolume" title="주문할 코인 수량입니다." type="number" min="0" step="0.00000001" placeholder="예: 0.0001" />
+            </label>
+            <div class="order-actions">
+              <button id="testOrderButton" type="button" title="실제 주문 없이 Upbit 주문 테스트 또는 가상 검증을 수행합니다.">주문 검증</button>
+              <button id="submitOrderButton" class="primary" type="button" title="SMTM_LIVE_TRADING_ENABLED=true이면 실제 주문, false이면 가상 주문으로 처리합니다.">주문 실행</button>
+            </div>
+          </div>
+          <div id="orderResult" class="order-result muted">주문 결과 없음</div>
+        </article>
+      </section>
+
       <section class="grid">
         <article class="panel chart-panel">
           <div class="panel-head">

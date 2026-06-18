@@ -42,6 +42,7 @@ select {
 .toolbar,
 .metrics,
 .market-grid,
+.account-grid,
 .grid,
 .tables,
 .panel,
@@ -205,6 +206,101 @@ button:disabled {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 12px;
+}
+
+.account-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+  margin-bottom: 12px;
+}
+
+.account-panel .panel-head,
+.order-panel .panel-head {
+  padding: 8px 12px;
+}
+
+.account-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.account-summary div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 7px 9px;
+  background: var(--surface);
+}
+
+.account-summary span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.account-summary strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.account-table-wrap {
+  max-height: 118px;
+}
+
+.account-panel th,
+.account-panel td {
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.order-form {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) minmax(164px, auto);
+  gap: 8px;
+  align-items: end;
+  padding: 9px 12px;
+}
+
+.order-panel .field {
+  gap: 4px;
+}
+
+.order-panel select,
+.order-panel input,
+.order-panel button {
+  height: 34px;
+  padding-inline: 8px;
+}
+
+.order-panel button {
+  min-width: 0;
+}
+
+.order-actions {
+  display: flex;
+  gap: 6px;
+  align-items: end;
+}
+
+.order-actions button {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.order-result {
+  min-height: 36px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--line);
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .market-panel canvas {
@@ -439,9 +535,19 @@ td.negative {
   .toolbar,
   .metrics,
   .market-grid,
+  .account-grid,
   .grid,
   .tables {
     grid-template-columns: 1fr;
+  }
+
+  .account-summary,
+  .order-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .order-actions {
+    grid-column: span 2;
   }
 
   .topbar {
@@ -467,6 +573,17 @@ td.negative {
   .actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
+  }
+
+  .account-summary,
+  .order-form {
+    grid-template-columns: 1fr;
+  }
+
+  .order-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-column: auto;
   }
 
   button {

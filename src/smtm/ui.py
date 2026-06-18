@@ -12,13 +12,14 @@ from threading import RLock, Thread
 from time import sleep
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode, unquote, urlparse
+from urllib.parse import parse_qs, urlencode, unquote, urlparse
 from urllib.request import Request, urlopen
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from .live_trading import LiveTradingService
 from .operator import OperatorState, TradingOperator
-from .utils import json_safe, read_json, utc_now, write_json
+from .utils import json_safe, read_json, to_decimal, utc_now, write_json
 
 
 WORKSPACE_ROOT = Path.cwd()
@@ -306,6 +307,7 @@ class SimulationRegistry:
         self.lock = RLock()
         self.enable_market_monitor = enable_market_monitor
         self.market_monitor = RealtimeMarketMonitor() if enable_market_monitor else None
+        self.live_trading = LiveTradingService()
 
     def list_configs(self) -> list[dict[str, str]]:
         configs = []
@@ -368,6 +370,34 @@ class SimulationRegistry:
             return {"running": False, "error": None, "markets": {}}
         return self.market_monitor.snapshot()
 
+    def get_account_snapshot(self) -> dict[str, Any]:
+        return self.live_trading.snapshot(self._latest_price_map())
+
+    def get_order_chance(self, market: str) -> dict[str, Any]:
+        return self.live_trading.chance(market)
+
+    def test_manual_order(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.live_trading.test_order(payload, self._latest_price(str(payload.get("market") or "")))
+
+    def submit_manual_order(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.live_trading.submit_order(payload, self._latest_price(str(payload.get("market") or "")))
+
+    def _latest_price_map(self) -> dict[str, Any]:
+        snapshot = self.get_market_snapshot()
+        prices = {}
+        for market, payload in (snapshot.get("markets") or {}).items():
+            latest = payload.get("latest") or {}
+            price = latest.get("trade_price")
+            if price not in {None, ""}:
+                try:
+                    prices[market] = to_decimal(price)
+                except ValueError:
+                    continue
+        return prices
+
+    def _latest_price(self, market: str) -> Any:
+        return self._latest_price_map().get(market.upper())
+
     def _has_running_job(self, except_run_id: str | None = None) -> bool:
         with self.lock:
             for run_id, job in self.jobs.items():
@@ -402,6 +432,16 @@ class UIRequestHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/markets":
             self._send_json(REGISTRY.get_market_snapshot())
+            return
+        if parsed.path == "/api/account":
+            self._send_json(REGISTRY.get_account_snapshot())
+            return
+        if parsed.path == "/api/orders/chance":
+            market = parse_qs(parsed.query).get("market", ["KRW-BTC"])[0]
+            try:
+                self._send_json(REGISTRY.get_order_chance(market))
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
             return
         if parsed.path.startswith("/api/runs/"):
             if parsed.path.endswith("/report"):
@@ -444,6 +484,20 @@ class UIRequestHandler(BaseHTTPRequestHandler):
             job = REGISTRY.get_run(run_id)
             self._send_json(job.snapshot() if job else {"stopped": True})
             return
+        if parsed.path == "/api/orders/test":
+            payload = self._read_json_body()
+            try:
+                self._send_json(REGISTRY.test_manual_order(payload))
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
+        if parsed.path == "/api/orders":
+            payload = self._read_json_body()
+            try:
+                self._send_json(REGISTRY.submit_manual_order(payload), HTTPStatus.CREATED)
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
         self._send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
 
     def log_message(self, format: str, *args: Any) -> None:
@@ -477,7 +531,10 @@ class UIRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
-        self.wfile.write(data)
+        try:
+            self.wfile.write(data)
+        except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError, OSError):
+            pass
 
     def _send_json(self, payload: Any, status: HTTPStatus = HTTPStatus.OK) -> None:
         data = json.dumps(json_safe(payload), ensure_ascii=False).encode("utf-8")
@@ -486,7 +543,10 @@ class UIRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
-        self.wfile.write(data)
+        try:
+            self.wfile.write(data)
+        except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError, OSError):
+            pass
 
 
 def run_server(host: str = "127.0.0.1", port: int = 8765) -> None:

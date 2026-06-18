@@ -2,8 +2,10 @@ const state = {
   activeRunId: null,
   pollTimer: null,
   marketTimer: null,
+  accountTimer: null,
   latestSnapshot: null,
   latestMarketSnapshot: null,
+  latestAccountSnapshot: null,
   controlsBusy: false,
   clientMarketPoints: {
     "KRW-BTC": [],
@@ -48,6 +50,23 @@ const els = {
   xrpChange: document.getElementById("xrpChange"),
   xrpUpdated: document.getElementById("xrpUpdated"),
   xrpChart: document.getElementById("xrpChart"),
+  accountState: document.getElementById("accountState"),
+  tradingMode: document.getElementById("tradingMode"),
+  accountTotalValue: document.getElementById("accountTotalValue"),
+  accountKrwValue: document.getElementById("accountKrwValue"),
+  maxOrderValue: document.getElementById("maxOrderValue"),
+  holdingsBody: document.getElementById("holdingsBody"),
+  orderMode: document.getElementById("orderMode"),
+  orderMarket: document.getElementById("orderMarket"),
+  orderSide: document.getElementById("orderSide"),
+  orderKind: document.getElementById("orderKind"),
+  orderPrice: document.getElementById("orderPrice"),
+  orderVolume: document.getElementById("orderVolume"),
+  orderPriceLabel: document.getElementById("orderPriceLabel"),
+  orderVolumeLabel: document.getElementById("orderVolumeLabel"),
+  testOrderButton: document.getElementById("testOrderButton"),
+  submitOrderButton: document.getElementById("submitOrderButton"),
+  orderResult: document.getElementById("orderResult"),
 };
 
 const chartHoverState = new WeakMap();
@@ -61,7 +80,28 @@ async function getJson(url, options = {}) {
     headers: { "Content-Type": "application/json" },
     ...options,
   });
-  const payload = await response.json();
+  const contentType = response.headers.get("Content-Type") || "";
+  const rawText = await response.text();
+  let payload = {};
+  if (rawText && contentType.includes("application/json")) {
+    try {
+      payload = JSON.parse(rawText);
+    } catch (error) {
+      throw new Error(`JSON 응답 해석 실패: ${error.message}`);
+    }
+  } else if (rawText && rawText.trim().startsWith("{")) {
+    try {
+      payload = JSON.parse(rawText);
+    } catch (error) {
+      throw new Error(`JSON 응답 해석 실패: ${error.message}`);
+    }
+  } else if (rawText) {
+    const textPreview = rawText.replace(/\s+/g, " ").slice(0, 80);
+    throw new Error(`서버가 JSON이 아닌 응답을 반환했습니다. 최신 서버를 다시 시작해 주세요. (${response.status} ${textPreview})`);
+  }
+  if (!response.ok && !contentType.includes("application/json")) {
+    throw new Error(`서버 API 응답이 JSON이 아닙니다. 최신 서버를 다시 시작해 주세요. (${response.status} ${response.statusText})`);
+  }
   if (!response.ok) {
     throw new Error(payload.error || response.statusText);
   }
@@ -132,6 +172,12 @@ function beginMarketPolling() {
   refreshMarkets();
 }
 
+function beginAccountPolling() {
+  if (state.accountTimer) clearInterval(state.accountTimer);
+  state.accountTimer = setInterval(refreshAccount, 5000);
+  refreshAccount();
+}
+
 async function refreshRun() {
   if (!state.activeRunId) return;
   try {
@@ -175,6 +221,52 @@ async function refreshMarkets() {
       renderMarketSnapshot(state.latestMarketSnapshot);
       persistDashboardState();
     }
+  }
+}
+
+async function refreshAccount() {
+  try {
+    const snapshot = await getJson("/api/account");
+    state.latestAccountSnapshot = snapshot;
+    renderAccount(snapshot);
+  } catch (error) {
+    const snapshot = {
+      error: error.message,
+      accounts: [],
+      api_configured: false,
+      live_trading_enabled: false,
+      mode: "가상 주문",
+      allowed_markets: MARKET_CODES,
+    };
+    state.latestAccountSnapshot = snapshot;
+    renderAccount(snapshot);
+  }
+}
+
+async function testManualOrder() {
+  await sendManualOrder("/api/orders/test", "POST");
+}
+
+async function submitManualOrder() {
+  const isLive = Boolean(state.latestAccountSnapshot?.live_trading_enabled);
+  if (isLive && !confirm("실제 주문을 전송합니다. 계속할까요?")) return;
+  await sendManualOrder("/api/orders", "POST");
+}
+
+async function sendManualOrder(url, method) {
+  setOrderBusy(true);
+  try {
+    const payload = manualOrderPayload();
+    const result = await getJson(url, {
+      method,
+      body: JSON.stringify(payload),
+    });
+    renderOrderResult(result);
+    refreshAccount();
+  } catch (error) {
+    renderOrderResult({ status: "error", reason: error.message });
+  } finally {
+    setOrderBusy(false);
   }
 }
 
@@ -424,6 +516,112 @@ function render(snapshot) {
   renderMarketSnapshot(state.latestMarketSnapshot);
   drawEquityChart(snapshot.equity_points || []);
   persistDashboardState();
+}
+
+function renderAccount(snapshot) {
+  const accounts = snapshot?.accounts || [];
+  const hasError = Boolean(snapshot?.error);
+  const configured = Boolean(snapshot?.api_configured);
+  els.accountState.textContent = hasError ? "조회 오류" : configured ? "조회 완료" : "API 키 없음";
+  els.accountState.title = snapshot?.error || "";
+  els.tradingMode.textContent = snapshot?.mode || "가상 주문";
+  els.orderMode.textContent = snapshot?.live_trading_enabled ? "실거래 활성" : "가상 주문";
+  els.orderMode.className = snapshot?.live_trading_enabled ? "muted negative" : "muted";
+  els.accountTotalValue.textContent = money(snapshot?.total_krw);
+  els.accountKrwValue.textContent = money(snapshot?.available_krw);
+  els.maxOrderValue.textContent = money(snapshot?.max_order_krw);
+  renderAllowedMarkets(snapshot?.allowed_markets || MARKET_CODES);
+  renderHoldings(accounts, configured, hasError, snapshot?.error);
+}
+
+function renderAllowedMarkets(markets) {
+  const allowedMarkets = Array.isArray(markets) && markets.length > 0 ? markets : MARKET_CODES;
+  const selected = els.orderMarket.value;
+  els.orderMarket.innerHTML = "";
+  allowedMarkets.forEach((market) => {
+    const option = document.createElement("option");
+    option.value = market;
+    option.textContent = marketLabel(market);
+    els.orderMarket.appendChild(option);
+  });
+  if (allowedMarkets.includes(selected)) {
+    els.orderMarket.value = selected;
+  } else {
+    els.orderMarket.value = allowedMarkets[0] || "";
+  }
+  updateOrderForm();
+}
+
+function renderHoldings(accounts, configured, hasError, errorMessage) {
+  els.holdingsBody.innerHTML = "";
+  if (hasError) {
+    els.holdingsBody.appendChild(emptyRow(5, errorMessage || "계좌 조회 오류"));
+    return;
+  }
+  if (!configured) {
+    els.holdingsBody.appendChild(emptyRow(5, ".env API Key 미설정"));
+    return;
+  }
+  if (accounts.length === 0) {
+    els.holdingsBody.appendChild(emptyRow(5, "보유 자산 없음"));
+    return;
+  }
+  accounts.forEach((account) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${escapeHtml(account.currency || "-")}</td>
+      <td>${number(account.balance)}</td>
+      <td>${number(account.locked)}</td>
+      <td>${money(account.avg_buy_price)}</td>
+      <td>${money(account.valuation_krw)}</td>
+    `;
+    els.holdingsBody.appendChild(tr);
+  });
+}
+
+function manualOrderPayload() {
+  const orderKind = els.orderKind.value;
+  const side = orderKind === "market_buy" ? "buy" : orderKind === "market_sell" ? "sell" : els.orderSide.value;
+  return {
+    market: els.orderMarket.value,
+    side,
+    order_kind: orderKind,
+    price: els.orderPrice.disabled ? "" : els.orderPrice.value,
+    volume: els.orderVolume.disabled ? "" : els.orderVolume.value,
+  };
+}
+
+function renderOrderResult(result) {
+  const status = result?.status || "-";
+  const reason = result?.reason || result?.error || "";
+  const mode = result?.mode ? `${result.mode} / ` : "";
+  const orderId = result?.exchange_order_id ? ` / ${result.exchange_order_id}` : "";
+  els.orderResult.textContent = `${mode}${status}${orderId}${reason ? ` / ${reason}` : ""}`;
+  els.orderResult.className = status === "error" ? "order-result negative" : "order-result muted";
+}
+
+function updateOrderForm() {
+  const orderKind = els.orderKind.value;
+  const isMarketBuy = orderKind === "market_buy";
+  const isMarketSell = orderKind === "market_sell";
+  if (isMarketBuy) {
+    els.orderSide.value = "buy";
+    els.orderSide.disabled = true;
+  } else if (isMarketSell) {
+    els.orderSide.value = "sell";
+    els.orderSide.disabled = true;
+  } else {
+    els.orderSide.disabled = false;
+  }
+  els.orderPrice.disabled = isMarketSell;
+  els.orderVolume.disabled = isMarketBuy;
+  els.orderPriceLabel.textContent = isMarketBuy ? "주문금액" : "가격";
+  els.orderVolumeLabel.textContent = isMarketSell ? "매도수량" : "수량";
+}
+
+function setOrderBusy(enabled) {
+  els.testOrderButton.disabled = enabled;
+  els.submitOrderButton.disabled = enabled;
 }
 
 function renderFills(fills) {
@@ -868,6 +1066,13 @@ function sideLabel(value) {
   return { buy: "매수", sell: "매도", cancel: "취소", hold: "대기" }[value] || value;
 }
 
+function marketLabel(value) {
+  return {
+    "KRW-BTC": "비트코인",
+    "KRW-XRP": "엑스알피(리플)",
+  }[value] || value;
+}
+
 function money(value) {
   if (value === undefined || value === null || value === "") return "-";
   const amount = Number(value);
@@ -920,6 +1125,10 @@ function escapeHtml(value) {
 
 els.startButton.addEventListener("click", startRun);
 els.stopButton.addEventListener("click", stopRun);
+els.orderKind.addEventListener("change", updateOrderForm);
+els.testOrderButton.addEventListener("click", testManualOrder);
+els.submitOrderButton.addEventListener("click", submitManualOrder);
+updateOrderForm();
 updateRunControls();
 window.addEventListener("resize", () => {
   if (!state.latestSnapshot) return;
@@ -930,6 +1139,7 @@ window.addEventListener("resize", () => {
 loadConfigs()
   .then(() => {
     restoreDashboardState();
+    beginAccountPolling();
     return loadLatestRun();
   })
   .catch((error) => showError(error.message));
